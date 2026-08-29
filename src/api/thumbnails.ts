@@ -1,9 +1,11 @@
 import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
-import { getVideo } from "../db/videos";
+import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError } from "./errors";
+import { getInMemoryURL } from "./assets";
+
 
 type Thumbnail = {
   data: ArrayBuffer;
@@ -48,6 +50,48 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   console.log("uploading thumbnail for video", videoId, "by user", userID);
 
   // TODO: implement the upload here
+   const formData = await req.formData();
+   const imageFile = formData.get("thumbnail") as File | null;
+   if (!imageFile) {
+     throw new BadRequestError("No thumbnail file provided");
+   }
 
-  return respondWithJSON(200, null);
+   const MAX_UPLOAD_SIZE = 10 << 20; // 10MB
+   if (imageFile.size > MAX_UPLOAD_SIZE) {
+     throw new BadRequestError("Thumbnail file too large");
+   }
+
+   const imageType = imageFile.type;
+   if (!imageType) {
+      throw new BadRequestError("Thumbnail file has no type");
+   }
+   if (imageType !== "image/png" && imageType !== "image/jpeg") {
+      throw new BadRequestError("Thumbnail file must be PNG or JPEG");
+   }
+
+    const fileData = await imageFile.arrayBuffer();
+    if (!fileData) {
+      throw new BadRequestError("Failed to read thumbnail file");
+    }
+
+    const video = getVideo(cfg.db, videoId);
+    if (!video) {
+      throw new NotFoundError("Couldn't find video");
+    }
+    if (video.userID !== userID) {
+      throw new BadRequestError("You are not the owner of this video");
+    }
+
+    videoThumbnails.set(videoId, {
+      data: fileData,
+      mediaType: imageType,
+    });
+
+    // generate thumbnail url in format http://localhost:<port>/api/thumbnails/<videoID>
+    const thumbnailUrl = getInMemoryURL(cfg, videoId);
+    video.thumbnailURL = thumbnailUrl;
+
+    updateVideo(cfg.db, video);
+
+  return respondWithJSON(200, video);
 }
