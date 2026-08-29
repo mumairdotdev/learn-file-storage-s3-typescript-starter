@@ -4,39 +4,6 @@ import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError } from "./errors";
-import { getInMemoryURL } from "./assets";
-
-
-type Thumbnail = {
-  data: ArrayBuffer;
-  mediaType: string;
-};
-
-const videoThumbnails: Map<string, Thumbnail> = new Map();
-
-export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
-  const { videoId } = req.params as { videoId?: string };
-  if (!videoId) {
-    throw new BadRequestError("Invalid video ID");
-  }
-
-  const video = getVideo(cfg.db, videoId);
-  if (!video) {
-    throw new NotFoundError("Couldn't find video");
-  }
-
-  const thumbnail = videoThumbnails.get(videoId);
-  if (!thumbnail) {
-    throw new NotFoundError("Thumbnail not found");
-  }
-
-  return new Response(thumbnail.data, {
-    headers: {
-      "Content-Type": thumbnail.mediaType,
-      "Cache-Control": "no-store",
-    },
-  });
-}
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -51,28 +18,28 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
 
   // TODO: implement the upload here
    const formData = await req.formData();
-   const imageFile = formData.get("thumbnail") as File | null;
-   if (!imageFile) {
+   const file = formData.get("thumbnail") as File | null;
+   if (!file) {
      throw new BadRequestError("No thumbnail file provided");
    }
 
    const MAX_UPLOAD_SIZE = 10 << 20; // 10MB
-   if (imageFile.size > MAX_UPLOAD_SIZE) {
+   if (file.size > MAX_UPLOAD_SIZE) {
      throw new BadRequestError("Thumbnail file too large");
    }
 
-   const imageType = imageFile.type;
-   if (!imageType) {
+   const mediaType = file.type;
+   if (!mediaType) {
       throw new BadRequestError("Thumbnail file has no type");
    }
-   if (imageType !== "image/png" && imageType !== "image/jpeg") {
-      throw new BadRequestError("Thumbnail file must be PNG or JPEG");
-   }
 
-    const fileData = await imageFile.arrayBuffer();
+    const fileData = await file.arrayBuffer();
     if (!fileData) {
       throw new BadRequestError("Failed to read thumbnail file");
     }
+
+    const base64Data = Buffer.from(fileData).toString("base64");
+    const base64DataURL = `data:${mediaType};base64,${base64Data}`;
 
     const video = getVideo(cfg.db, videoId);
     if (!video) {
@@ -82,14 +49,7 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
       throw new BadRequestError("You are not the owner of this video");
     }
 
-    videoThumbnails.set(videoId, {
-      data: fileData,
-      mediaType: imageType,
-    });
-
-    // generate thumbnail url in format http://localhost:<port>/api/thumbnails/<videoID>
-    const thumbnailUrl = getInMemoryURL(cfg, videoId);
-    video.thumbnailURL = thumbnailUrl;
+    video.thumbnailURL = base64DataURL; // store the base64 data URL in the video object
 
     updateVideo(cfg.db, video);
 
