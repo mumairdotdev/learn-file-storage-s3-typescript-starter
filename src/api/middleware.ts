@@ -14,13 +14,15 @@ export function withConfig(cfg: ApiConfig, handler: HandlerWithConfig) {
   return (req: BunRequest) => handler(cfg, req);
 }
 
-export function cacheMiddleware(
+export function noCacheMiddleware(
   next: (req: Request) => Response | Promise<Response>,
 ): (req: Request) => Promise<Response> {
   return async function (req: Request): Promise<Response> {
     const res = await next(req);
     const headers = new Headers(res.headers);
-    headers.set("Cache-Control", "max-age=3600");
+    headers.set("Cache-Control", "no-store");
+    // headers.set("Pragma", "no-cache");
+    // headers.set("Expires", "0");
 
     return new Response(res.body, {
       status: res.status,

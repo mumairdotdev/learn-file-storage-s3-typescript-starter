@@ -38,7 +38,7 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   }
 
   const mediaType = file.type;
-    if (mediaType !== "image/jpeg" && mediaType !== "image/png") {
+  if (mediaType !== "image/jpeg" && mediaType !== "image/png") {
     throw new BadRequestError("Invalid file type. Only JPEG or PNG allowed.");
   }
 
